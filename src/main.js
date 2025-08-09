@@ -19,6 +19,7 @@ class Runner {
         this.cellSize = 10;
         // Grid state
         this.grid = [];
+        this.nextGrid = []; // secondary buffer to keep typed arrays and avoid JSON diff
         this.deathCounts = [];
         // Simulation state
         this.intervalId = null;
@@ -35,6 +36,8 @@ class Runner {
         this.mouseDownCell = null;
         this.minCellSize = 2;
         this.maxCellSize = 40;
+        this.imageData = null; // reused pixel buffer for batch drawing
+        this.showGridLines = false; // disable grid lines (invisible)
     }
 
     // --- UI/DOM Methods ---
@@ -72,51 +75,137 @@ class Runner {
     }
 
     drawGrid() {
-        // Draw the entire grid and all cells
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        for (let r = 0; r < this.grid.length; r++) {
-            for (let c = 0; c < this.grid[r].length; c++) {
-                let isPreview = this.previewCells.has(r + ',' + c);
-                // Preview cells (mouse hover/drag)
-                if (isPreview) {
-                    this.ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                } else if (this.grid[r][c] === 1) {
-                    // Alive cell
-                    this.ctx.fillStyle = 'white';
-                } else if (this.heatMap && this.deathCounts[r][c] > 0) {
-                    // Dead cell with heatmap
-                    const n = this.deathCounts[r][c];
-                    let rCol, gCol, bCol;
-                    if (n <= 6) {
-                        rCol = 20 + n * 10;
-                        gCol = 40 + n * 20;
-                        bCol = 120 + n * 20;
-                    } else if (n <= 12) {
-                        const t = (n - 6) / 6;
-                        rCol = Math.round((80 * (1 - t)) + (255 * t));
-                        gCol = Math.round((160 * (1 - t)) + (120 * t));
-                        bCol = Math.round((240 * (1 - t)) + (200 * t));
-                    } else if (n <= 18) {
-                        const t = (n - 12) / 6;
-                        rCol = Math.round((255 * (1 - t)) + (180 * t));
-                        gCol = Math.round((120 * (1 - t)) + (30 * t));
-                        bCol = Math.round((200 * (1 - t)) + (60 * t));
-                    } else {
-                        rCol = 120;
-                        gCol = 20;
-                        bCol = 40;
-                    }
-                    this.ctx.fillStyle = `rgb(${rCol},${gCol},${bCol})`;
+        // Batch draw using ImageData for performance
+        const rows = this.grid.length;
+        if (rows === 0) return;
+        const cols = this.grid[0].length;
+        const width = cols * this.cellSize;
+        const height = rows * this.cellSize;
+
+        // Ensure canvas matches grid size
+        if (this.canvas.width !== width) this.canvas.width = width;
+        if (this.canvas.height !== height) this.canvas.height = height;
+
+        // Allocate or resize the ImageData buffer
+        if (!this.imageData || this.imageData.width !== width || this.imageData.height !== height) {
+            this.imageData = this.ctx.createImageData(width, height);
+        }
+        const data = this.imageData.data;
+
+        // Fill pixels for each cell block
+        for (let r = 0; r < rows; r++) {
+            const dr = this.deathCounts[r];
+            const gr = this.grid[r];
+            const yStart = r * this.cellSize;
+            for (let c = 0; c < cols; c++) {
+                // Determine color and whether to draw borders
+                const alive = gr[c] === 1;
+                const heat = this.heatMap && dr[c] > 0;
+                const isColored = alive || heat;
+                let R, G, B, A = 255;
+                if (alive) {
+                    R = 255; G = 255; B = 255;
+                } else if (heat) {
+                    const [hr, hg, hb] = this.getHeatColor(dr[c]);
+                    R = hr; G = hg; B = hb;
                 } else {
-                    // Dead cell
-                    this.ctx.fillStyle = 'black';
+                    R = 0; G = 0; B = 0;
                 }
-                this.ctx.fillRect(c * this.cellSize, r * this.cellSize, this.cellSize, this.cellSize);
-                this.ctx.strokeRect(c * this.cellSize, r * this.cellSize, this.cellSize, this.cellSize);
+                const xStart = c * this.cellSize;
+                // Paint the block (cellSize x cellSize)
+                for (let py = 0; py < this.cellSize; py++) {
+                    const y = yStart + py;
+                    let idx = (y * width + xStart) * 4;
+                    // Precompute border flags for this row
+                    const drawTop = isColored && py === 0; // always draw top edge
+                    const drawBottom = isColored && r === rows - 1 && py === this.cellSize - 1; // only outer bottom edge
+                    for (let px = 0; px < this.cellSize; px++) {
+                        // Border: left/top edges for every colored cell; right/bottom only on outermost edges
+                        const drawLeft = isColored && px === 0; // always draw left edge
+                        const drawRight = isColored && c === cols - 1 && px === this.cellSize - 1; // only outer right edge
+                        const isBorder = drawLeft || drawTop || drawRight || drawBottom;
+                        if (isBorder) {
+                            // black border pixel
+                            data[idx] = 0;
+                            data[idx + 1] = 0;
+                            data[idx + 2] = 0;
+                            data[idx + 3] = 255;
+                        } else {
+                            data[idx] = R;
+                            data[idx + 1] = G;
+                            data[idx + 2] = B;
+                            data[idx + 3] = A;
+                        }
+                        idx += 4;
+                    }
+                }
             }
         }
-        this.ctx.lineWidth = 1;
+
+        // Put the composed image to the canvas
+        this.ctx.putImageData(this.imageData, 0, 0);
+
+        // Overlay preview cells (small count, fine to draw as rects)
+        if (this.previewCells.size > 0) {
+            this.ctx.save();
+            this.ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            for (const key of this.previewCells) {
+                const [row, col] = key.split(',').map(Number);
+                if (row !== undefined && col !== undefined) {
+                    this.ctx.fillRect(col * this.cellSize, row * this.cellSize, this.cellSize, this.cellSize);
+                }
+            }
+            this.ctx.restore();
+        }
+
+        // Draw grid lines only if enabled (kept invisible by default)
+        if (this.showGridLines) {
+            this.ctx.save();
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeStyle = 'rgba(0,0,0,1)'; // black lines
+            this.ctx.beginPath();
+            // Vertical lines
+            for (let x = 0; x <= cols; x++) {
+                const px = Math.floor(x * this.cellSize) + 0.5;
+                this.ctx.moveTo(px, 0);
+                this.ctx.lineTo(px, height);
+            }
+            // Horizontal lines
+            for (let y = 0; y <= rows; y++) {
+                const py = Math.floor(y * this.cellSize) + 0.5;
+                this.ctx.moveTo(0, py);
+                this.ctx.lineTo(width, py);
+            }
+            this.ctx.stroke();
+            this.ctx.restore();
+        }
+
         this.updateButtonStates();
+    }
+
+    getHeatColor(n) {
+        // Map deathCounts to a heat color (replicates previous gradient)
+        let rCol, gCol, bCol;
+        if (n <= 6) {
+            rCol = 20 + n * 10;
+            gCol = 40 + n * 20;
+            bCol = 120 + n * 20;
+        } else if (n <= 12) {
+            const t = (n - 6) / 6;
+            rCol = Math.round((80 * (1 - t)) + (255 * t));
+            gCol = Math.round((160 * (1 - t)) + (120 * t));
+            bCol = Math.round((240 * (1 - t)) + (200 * t));
+        } else if (n <= 18) {
+            const t = (n - 12) / 6;
+            rCol = Math.round((255 * (1 - t)) + (180 * t));
+            gCol = Math.round((120 * (1 - t)) + (30 * t));
+            bCol = Math.round((200 * (1 - t)) + (60 * t));
+        } else {
+            rCol = 120;
+            gCol = 20;
+            bCol = 40;
+        }
+        return [rCol, gCol, bCol];
     }
 
     attachEventListeners() {
@@ -216,6 +305,26 @@ class Runner {
         // Keyboard events for controls and zoom
         this.canvas.setAttribute('tabindex', 0);
         window.addEventListener('keydown', (e) => {
+            // Global zoom with +/- (and numpad +/-), except when typing or with modifiers
+            const target = e.target;
+            const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+            const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable);
+            const hasModifier = e.ctrlKey || e.metaKey || e.altKey;
+
+            if (!hasModifier && !isTyping) {
+                if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') {
+                    e.preventDefault();
+                    this.zoom(1);
+                    return;
+                }
+                if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
+                    e.preventDefault();
+                    this.zoom(-1);
+                    return;
+                }
+            }
+
+            // Spacebar play/pause only when canvas/body focused
             if (document.activeElement === this.canvas || e.target === document.body) {
                 if (e.code === 'Space' || e.key === ' ') {
                     e.preventDefault();
@@ -226,30 +335,61 @@ class Runner {
                     } else if (this.isRunning) {
                         this.pauseGame();
                     }
-                } else if (e.key === '+' || e.key === '=') {
-                    this.zoom(1);
-                } else if (e.key === '-' || e.key === '_') {
-                    this.zoom(-1);
                 }
             }
         });
     }
 
     zoom(direction) {
-        // Zoom in or out by changing cell size
+        // Zoom in or out by changing cell size while keeping viewport centered
         const oldCellSize = this.cellSize;
+        const prevWidth = this.canvas.width;
+        const prevHeight = this.canvas.height;
+        const prevScrollLeft = this.frame.scrollLeft;
+        const prevScrollTop = this.frame.scrollTop;
+        const frameWidth = this.frame.clientWidth;
+        const frameHeight = this.frame.clientHeight;
+
+        let changed = false;
         if (direction > 0 && this.cellSize < this.maxCellSize) {
             this.cellSize += 2;
+            changed = true;
         } else if (direction < 0 && this.cellSize > this.minCellSize) {
             this.cellSize -= 2;
-        } else {
-            return;
+            changed = true;
         }
-        // Resize canvas and redraw grid
+        if (!changed) return;
+
+        // Compute scale relative to old size
+        const scale = this.cellSize / oldCellSize;
+
+        // Current viewport center in content coordinates
+        const centerX = prevScrollLeft + frameWidth / 2;
+        const centerY = prevScrollTop + frameHeight / 2;
+
+        // Resize canvas according to new cell size
         const rows = this.grid.length;
         const cols = this.grid[0].length;
         this.canvas.width = cols * this.cellSize;
         this.canvas.height = rows * this.cellSize;
+
+        // New center after scaling
+        const newCenterX = centerX * scale;
+        const newCenterY = centerY * scale;
+
+        // Adjust scroll to keep center stable
+        let newScrollLeft = newCenterX - frameWidth / 2;
+        let newScrollTop = newCenterY - frameHeight / 2;
+
+        // Clamp within bounds
+        const maxScrollLeft = Math.max(0, this.canvas.width - frameWidth);
+        const maxScrollTop = Math.max(0, this.canvas.height - frameHeight);
+        newScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft));
+        newScrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop));
+
+        this.frame.scrollLeft = newScrollLeft;
+        this.frame.scrollTop = newScrollTop;
+
         this.drawGrid();
     }
 
@@ -268,6 +408,7 @@ class Runner {
     createGrid(rows, cols) {
         // Create a new grid and deathCounts using typed arrays
         this.grid = Array.from({ length: rows }, () => new Uint8Array(cols));
+        this.nextGrid = Array.from({ length: rows }, () => new Uint8Array(cols));
         this.deathCounts = Array.from({ length: rows }, () => new Uint16Array(cols));
     }
 
@@ -301,30 +442,35 @@ class Runner {
             if (expandLeft) this.expandGrid('left', 10);
             if (expandRight) this.expandGrid('right', 10);
         }
-        // Now update as usual
-        const newGrid = this.grid.map(arr => [...arr]);
-        const nextDeathCounts = this.deathCounts.map(arr => [...arr]);
-        for (let r = 0; r < this.grid.length; r++) {
-            for (let c = 0; c < this.grid[r].length; c++) {
+        // Ensure nextGrid matches current grid dimensions (allocate on first run or after expansion)
+        const rows = this.grid.length;
+        const cols = this.grid[0].length;
+        if (!this.nextGrid || this.nextGrid.length !== rows || this.nextGrid[0].length !== cols) {
+            this.nextGrid = Array.from({ length: rows }, () => new Uint8Array(cols));
+        }
+        let changed = false;
+        for (let r = 0; r < rows; r++) {
+            const nextRow = this.nextGrid[r];
+            const currRow = this.grid[r];
+            for (let c = 0; c < cols; c++) {
                 const aliveNeighbors = this.countAliveNeighbors(r, c);
-                if (this.grid[r][c] === 1) {
+                const curr = currRow[c];
+                let next;
+                if (curr === 1) {
                     if (aliveNeighbors < 2 || aliveNeighbors > 3) {
-                        newGrid[r][c] = 0;
-                        nextDeathCounts[r][c] += 1;
+                        next = 0;
+                        this.deathCounts[r][c] += 1; // increment heat/death count on death
                     } else {
-                        newGrid[r][c] = 1;
+                        next = 1;
                     }
                 } else {
-                    if (aliveNeighbors === 3) {
-                        newGrid[r][c] = 1;
-                    } else {
-                        newGrid[r][c] = 0;
-                    }
+                    next = (aliveNeighbors === 3) ? 1 : 0;
                 }
+                nextRow[c] = next;
+                if (next !== curr) changed = true;
             }
         }
-        this.deathCounts = nextDeathCounts;
-        return newGrid;
+        return changed;
     }
 
     isAliveNextEpoch(row, col) {
@@ -423,9 +569,12 @@ class Runner {
 
     gameLoop() {
         // Main simulation loop: update grid and redraw
-        const newGrid = this.updateGrid();
-        if (JSON.stringify(newGrid) !== JSON.stringify(this.grid)) {
-            this.grid = newGrid;
+        const changed = this.updateGrid();
+        if (changed) {
+            // swap buffers
+            const tmp = this.grid;
+            this.grid = this.nextGrid;
+            this.nextGrid = tmp;
             this.drawGrid();
         } else {
             clearInterval(this.intervalId);
