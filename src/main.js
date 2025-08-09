@@ -3,7 +3,7 @@ class Runner {
         // DOM elements
         this.canvas = document.getElementById('gameCanvas');
         this.frame = document.getElementById('grid-frame');
-    this.wrapper = document.getElementById('canvas-wrapper');
+        this.wrapper = document.getElementById('canvas-wrapper');
         this.ctx = this.canvas.getContext('2d');
         this.playPauseButton = document.getElementById('playpause-button');
         this.resetButton = document.getElementById('reset-button');
@@ -100,8 +100,8 @@ class Runner {
         if (this.canvas.width !== width) this.canvas.width = width;
         if (this.canvas.height !== height) this.canvas.height = height;
 
-    // Update wrapper layout so that when canvas is smaller than the viewport it stays centered
-    this.updateWrapperLayout();
+        // Update wrapper layout so that when canvas is smaller than the viewport it stays centered
+        this.updateWrapperLayout();
 
         // Allocate or resize the ImageData buffer
         if (!this.imageData || this.imageData.width !== width || this.imageData.height !== height) {
@@ -468,21 +468,21 @@ class Runner {
         }
         if (!changed) return;
 
-    // Compute scale relative to old size
-    const scale = this.cellSize / oldCellSize;
+        // Compute scale relative to old size
+        const scale = this.cellSize / oldCellSize;
 
-    // Current viewport center in content coordinates
-    const centerX = prevScrollLeft + frameWidth / 2;
-    const centerY = prevScrollTop + frameHeight / 2;
+        // Current viewport center in content coordinates
+        const centerX = prevScrollLeft + frameWidth / 2;
+        const centerY = prevScrollTop + frameHeight / 2;
 
-    // Resize canvas according to new cell size
+        // Resize canvas according to new cell size
         const rows = this.grid.length;
         const cols = this.grid[0].length;
         this.canvas.width = cols * this.cellSize;
         this.canvas.height = rows * this.cellSize;
 
-    // Ensure wrapper layout matches new canvas size BEFORE computing new scroll
-    this.updateWrapperLayout();
+        // Ensure wrapper layout matches new canvas size BEFORE computing new scroll
+        this.updateWrapperLayout();
 
         // Decide target center: when zooming in, center on the live-cells bounding box if any
         let targetCenterX = null;
@@ -510,7 +510,7 @@ class Runner {
             }
         }
 
-    // Compute new scroll positions
+        // Compute new scroll positions
         let newScrollLeft, newScrollTop;
         if (targetCenterX != null && targetCenterY != null) {
             // Center around live cells bbox
@@ -530,8 +530,8 @@ class Runner {
         newScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft));
         newScrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop));
 
-    this.frame.scrollLeft = newScrollLeft;
-    this.frame.scrollTop = newScrollTop;
+        this.frame.scrollLeft = newScrollLeft;
+        this.frame.scrollTop = newScrollTop;
 
         this.drawGrid();
     }
@@ -636,7 +636,7 @@ class Runner {
         let aliveNeighbors = 0;
         const directions = [
             [-1, -1], [-1, 0], [-1, 1],
-            [0, -1],          [0, 1],
+            [0, -1], [0, 1],
             [1, -1], [1, 0], [1, 1]
         ];
         for (const [dx, dy] of directions) {
@@ -654,7 +654,7 @@ class Runner {
         // Count the number of alive neighbors for a cell
         const directions = [
             [-1, -1], [-1, 0], [-1, 1],
-            [0, -1],          [0, 1],
+            [0, -1], [0, 1],
             [1, -1], [1, 0], [1, 1]
         ];
         let count = 0;
