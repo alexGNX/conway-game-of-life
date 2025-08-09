@@ -92,6 +92,9 @@ class Runner {
         const width = cols * this.cellSize;
         const height = rows * this.cellSize;
         const nowTs = typeof now === 'number' ? now : (window.performance ? performance.now() : Date.now());
+        // Dynamic border thickness: thinner at low zoom, thicker at high zoom
+        // 0 for very small cells, up to 3 px for very large cells
+        const borderThickness = Math.max(0, Math.min(3, Math.floor(this.cellSize / 9)));
 
         // Ensure canvas matches grid size
         if (this.canvas.width !== width) this.canvas.width = width;
@@ -174,13 +177,13 @@ class Runner {
                 for (let py = 0; py < this.cellSize; py++) {
                     const y = yStart + py;
                     let idx = (y * width + xStart) * 4;
-                    // Precompute border flags for this row
-                    const drawTop = isColored && py === 0; // always draw top edge
-                    const drawBottom = isColored && r === rows - 1 && py === this.cellSize - 1; // only outer bottom edge
+                    // Precompute border flags for this row with variable thickness
+                    const drawTop = isColored && borderThickness > 0 && py < borderThickness; // top edge (variable thickness)
+                    const drawBottom = isColored && borderThickness > 0 && r === rows - 1 && py >= this.cellSize - borderThickness; // only outer bottom edge
                     for (let px = 0; px < this.cellSize; px++) {
                         // Border: left/top edges for every colored cell; right/bottom only on outermost edges
-                        const drawLeft = isColored && px === 0; // always draw left edge
-                        const drawRight = isColored && c === cols - 1 && px === this.cellSize - 1; // only outer right edge
+                        const drawLeft = isColored && borderThickness > 0 && px < borderThickness; // left edge (variable thickness)
+                        const drawRight = isColored && borderThickness > 0 && c === cols - 1 && px >= this.cellSize - borderThickness; // only outer right edge
                         const isBorder = drawLeft || drawTop || drawRight || drawBottom;
                         if (isBorder) {
                             // black border pixel
