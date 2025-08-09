@@ -3,6 +3,7 @@ class Runner {
         // DOM elements
         this.canvas = document.getElementById('gameCanvas');
         this.frame = document.getElementById('grid-frame');
+    this.wrapper = document.getElementById('canvas-wrapper');
         this.ctx = this.canvas.getContext('2d');
         this.playPauseButton = document.getElementById('playpause-button');
         this.resetButton = document.getElementById('reset-button');
@@ -96,6 +97,9 @@ class Runner {
         if (this.canvas.width !== width) this.canvas.width = width;
         if (this.canvas.height !== height) this.canvas.height = height;
 
+    // Update wrapper layout so that when canvas is smaller than the viewport it stays centered
+    this.updateWrapperLayout();
+
         // Allocate or resize the ImageData buffer
         if (!this.imageData || this.imageData.width !== width || this.imageData.height !== height) {
             this.imageData = this.ctx.createImageData(width, height);
@@ -122,16 +126,16 @@ class Runner {
                     R = 0; G = 0; B = 0;
                 }
 
-                // Transition handling (diagonal wipe BL->TR)
+                // Transition handling
                 const key = r + ',' + c;
                 const canAnimate = this.animationsEnabled && this.cellSize >= this.minAnimatedCellSize && this.epochDuration >= this.minAnimatedEpochMs;
                 const trans = canAnimate ? this.transitions.get(key) : undefined;
                 let inTransition = false, transType = null, prog = 0;
                 if (trans) {
                     const elapsed = nowTs - trans.start;
-                    if (elapsed < this.animationDuration && trans.type === 'birth') {
+                    if (elapsed < this.animationDuration && (trans.type === 'birth' || trans.type === 'death')) {
                         inTransition = true;
-                        transType = 'birth';
+                        transType = trans.type;
                         prog = Math.max(0, Math.min(1, elapsed / this.animationDuration));
                     } else {
                         // will be cleaned up by RAF loop
@@ -143,7 +147,8 @@ class Runner {
                 const threshold = Math.floor(prog * maxD);
 
                 // Source/target colors for transition
-                // Only animate births: source is heat color (if heatmap on) or black; target is white
+                // Birth: BL->TR wipe from heat/black to white
+                // Death: TR->BL wipe from white to black
                 let srcR = 0, srcG = 0, srcB = 0;
                 let tgtR = 255, tgtG = 255, tgtB = 255;
                 if (inTransition && transType === 'birth') {
@@ -154,6 +159,15 @@ class Runner {
                         srcR = 0; srcG = 0; srcB = 0;
                     }
                     tgtR = 255; tgtG = 255; tgtB = 255;
+                } else if (inTransition && transType === 'death') {
+                    // from white to heat color when heatmap is on, else to black
+                    srcR = 255; srcG = 255; srcB = 255;
+                    if (this.heatMap && dr[c] > 0) {
+                        const [hr, hg, hb] = this.getHeatColor(dr[c]);
+                        tgtR = hr; tgtG = hg; tgtB = hb;
+                    } else {
+                        tgtR = 0; tgtG = 0; tgtB = 0;
+                    }
                 }
 
                 // Paint the block (cellSize x cellSize)
@@ -175,9 +189,16 @@ class Runner {
                             data[idx + 2] = 0;
                             data[idx + 3] = 255;
                         } else if (inTransition) {
-                            // Diagonal index: bottom-left (px=0, py=cellSize-1) -> 0, top-right -> maxD
-                            const d = px + (this.cellSize - 1 - py);
-                            const useTarget = d <= threshold;
+                            let useTarget = false;
+                            if (transType === 'birth') {
+                                // BL->TR: bottom-left (px=0, py=cellSize-1) -> 0, top-right -> maxD
+                                const d = px + (this.cellSize - 1 - py);
+                                useTarget = d <= threshold;
+                            } else if (transType === 'death') {
+                                // TR->BL: top-right (px=cellSize-1, py=0) -> 0, bottom-left -> maxD
+                                const d2 = (this.cellSize - 1 - px) + py;
+                                useTarget = d2 <= threshold;
+                            }
                             if (useTarget) {
                                 data[idx] = tgtR;
                                 data[idx + 1] = tgtG;
@@ -240,6 +261,25 @@ class Runner {
         }
 
         this.updateButtonStates();
+    }
+
+    updateWrapperLayout() {
+        if (!this.wrapper) return;
+        const needCenterX = this.canvas.width < this.frame.clientWidth;
+        const needCenterY = this.canvas.height < this.frame.clientHeight;
+        if (needCenterX || needCenterY) {
+            // Center canvas inside frame when it's smaller
+            this.wrapper.style.display = 'flex';
+            this.wrapper.style.justifyContent = 'center';
+            this.wrapper.style.alignItems = 'center';
+            this.wrapper.style.width = this.frame.clientWidth + 'px';
+            this.wrapper.style.height = this.frame.clientHeight + 'px';
+        } else {
+            // Anchor to top-left for accurate scroll math
+            this.wrapper.style.display = 'inline-block';
+            this.wrapper.style.width = 'auto';
+            this.wrapper.style.height = 'auto';
+        }
     }
 
     getHeatColor(n) {
@@ -425,26 +465,61 @@ class Runner {
         }
         if (!changed) return;
 
-        // Compute scale relative to old size
-        const scale = this.cellSize / oldCellSize;
+    // Compute scale relative to old size
+    const scale = this.cellSize / oldCellSize;
 
-        // Current viewport center in content coordinates
-        const centerX = prevScrollLeft + frameWidth / 2;
-        const centerY = prevScrollTop + frameHeight / 2;
+    // Current viewport center in content coordinates
+    const centerX = prevScrollLeft + frameWidth / 2;
+    const centerY = prevScrollTop + frameHeight / 2;
 
-        // Resize canvas according to new cell size
+    // Resize canvas according to new cell size
         const rows = this.grid.length;
         const cols = this.grid[0].length;
         this.canvas.width = cols * this.cellSize;
         this.canvas.height = rows * this.cellSize;
 
-        // New center after scaling
-        const newCenterX = centerX * scale;
-        const newCenterY = centerY * scale;
+    // Ensure wrapper layout matches new canvas size BEFORE computing new scroll
+    this.updateWrapperLayout();
 
-        // Adjust scroll to keep center stable
-        let newScrollLeft = newCenterX - frameWidth / 2;
-        let newScrollTop = newCenterY - frameHeight / 2;
+        // Decide target center: when zooming in, center on the live-cells bounding box if any
+        let targetCenterX = null;
+        let targetCenterY = null;
+        if (direction > 0) {
+            // Find bounding box of alive cells
+            let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+            const rows = this.grid.length;
+            const cols = this.grid[0].length;
+            for (let r = 0; r < rows; r++) {
+                const gr = this.grid[r];
+                for (let c = 0; c < cols; c++) {
+                    if (gr[c] === 1) {
+                        if (r < minR) minR = r;
+                        if (r > maxR) maxR = r;
+                        if (c < minC) minC = c;
+                        if (c > maxC) maxC = c;
+                    }
+                }
+            }
+            if (minR !== Infinity) {
+                // Convert bbox center to pixel coordinates with new cell size
+                targetCenterX = ((minC + maxC + 1) * this.cellSize) / 2;
+                targetCenterY = ((minR + maxR + 1) * this.cellSize) / 2;
+            }
+        }
+
+    // Compute new scroll positions
+        let newScrollLeft, newScrollTop;
+        if (targetCenterX != null && targetCenterY != null) {
+            // Center around live cells bbox
+            newScrollLeft = targetCenterX - frameWidth / 2;
+            newScrollTop = targetCenterY - frameHeight / 2;
+        } else {
+            // Keep previous content center stable
+            const newCenterX = centerX * scale;
+            const newCenterY = centerY * scale;
+            newScrollLeft = newCenterX - frameWidth / 2;
+            newScrollTop = newCenterY - frameHeight / 2;
+        }
 
         // Clamp within bounds
         const maxScrollLeft = Math.max(0, this.canvas.width - frameWidth);
@@ -452,8 +527,8 @@ class Runner {
         newScrollLeft = Math.max(0, Math.min(newScrollLeft, maxScrollLeft));
         newScrollTop = Math.max(0, Math.min(newScrollTop, maxScrollTop));
 
-        this.frame.scrollLeft = newScrollLeft;
-        this.frame.scrollTop = newScrollTop;
+    this.frame.scrollLeft = newScrollLeft;
+    this.frame.scrollTop = newScrollTop;
 
         this.drawGrid();
     }
@@ -535,13 +610,14 @@ class Runner {
                 nextRow[c] = next;
                 if (next !== curr) {
                     changed = true;
-                    // Only animate births; do not animate deaths
+                    // Animate births and deaths
                     if (next === 1) {
                         const key = r + ',' + c;
                         this.transitions.set(key, { type: 'birth', start: nowTs });
                     } else {
-                        // ensure no lingering transition for this cell
-                        this.transitions.delete(r + ',' + c);
+                        // set death transition
+                        const key = r + ',' + c;
+                        this.transitions.set(key, { type: 'death', start: nowTs });
                     }
                 }
             }
