@@ -39,8 +39,6 @@ body {
     margin-top: 10px;
 }
 
-
-
 #heatmap-toggle-label {
     margin-left: 20px;
     user-select: none;
@@ -53,7 +51,6 @@ input[type="range"] {
 
 canvas {
     background: #fff;
-    border: 2px solid #f6f6f6;
     margin: 0 auto;
     display: block;
 }
