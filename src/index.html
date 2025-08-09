@@ -11,7 +11,7 @@
     <div id="controls">
         <div>
             <label for="epoch">Epoch duration: <span id="epoch-value">600</span></label>
-            <input type="range" id="epoch" min="0" max="7" value="5">
+            <input type="range" id="epoch" min="0" max="9" value="5">
         </div>
         <div>
             <button id="playpause-button" disabled>Pause</button>
@@ -19,6 +19,10 @@
             <label id="heatmap-toggle-label">
                 <input type="checkbox" id="heatmap-toggle" checked>
                 Heatmap
+            </label>
+            <label id="animate-toggle-label" style="margin-left: 20px; user-select: none;">
+                <input type="checkbox" id="animate-toggle" checked>
+                Animate cells
             </label>
             <label id="toroidal-toggle-label" style="margin-left: 20px; user-select: none;">
                 <input type="checkbox" id="toroidal-toggle">

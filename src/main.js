@@ -9,12 +9,13 @@ class Runner {
         this.epochInput = document.getElementById('epoch');
         this.epochValue = document.getElementById('epoch-value');
         this.heatMapToggle = document.getElementById('heatmap-toggle');
+        this.animateToggle = document.getElementById('animate-toggle');
         this.toroidalToggle = document.getElementById('toroidal-toggle');
         this.infiniteToggle = document.getElementById('infinite-toggle');
         // Simulation parameters
-        this.epochSliderSteps = [25, 50, 100, 150, 250, 300, 600, 1000];
+        this.epochSliderSteps = [25, 50, 100, 150, 250, 300, 600, 1000, 1500, 2000];
         this.epochSliderLabels = [
-            '25ms', '50ms', '100ms', '150ms', '250ms', '300ms', '600ms', '1s'
+            '25ms', '50ms', '100ms', '150ms', '250ms', '300ms', '600ms', '1s', '1.5s', "2s"
         ];
         this.cellSize = 10;
         // Grid state
@@ -29,6 +30,7 @@ class Runner {
         this.paintedCells = new Set();
         this.previewCells = new Set();
         this.heatMap = this.heatMapToggle ? this.heatMapToggle.checked : true;
+        this.animationsEnabled = this.animateToggle ? this.animateToggle.checked : true;
         this.toroidal = this.toroidalToggle ? this.toroidalToggle.checked : true;
         this.infinite = this.infiniteToggle ? this.infiniteToggle.checked : false;
         this.epochDuration = this.epochSliderSteps[this.epochInput.value];
@@ -38,6 +40,12 @@ class Runner {
         this.maxCellSize = 40;
         this.imageData = null; // reused pixel buffer for batch drawing
         this.showGridLines = false; // disable grid lines (invisible)
+        // Animation state
+        this.transitions = new Map(); // key: "r,c" -> { type: 'birth'|'death', start: number }
+        this.animationRafId = null;
+        this.animationDuration = 140; // ms (will be adjusted dynamically)
+        this.minAnimatedCellSize = 6; // only animate when cell is large enough to see
+        this.minAnimatedEpochMs = 100; // disable animations when epoch < 100ms
     }
 
     // --- UI/DOM Methods ---
@@ -45,6 +53,7 @@ class Runner {
         this.initEpochSlider();
         this.fitGridToContainer();
         this.attachEventListeners();
+        this.adjustAnimationDuration();
         this.drawGrid();
     }
 
@@ -74,13 +83,14 @@ class Runner {
         this.resetButton.disabled = !this.isRunning && this.isGridBlank();
     }
 
-    drawGrid() {
+    drawGrid(now) {
         // Batch draw using ImageData for performance
         const rows = this.grid.length;
         if (rows === 0) return;
         const cols = this.grid[0].length;
         const width = cols * this.cellSize;
         const height = rows * this.cellSize;
+        const nowTs = typeof now === 'number' ? now : (window.performance ? performance.now() : Date.now());
 
         // Ensure canvas matches grid size
         if (this.canvas.width !== width) this.canvas.width = width;
@@ -111,7 +121,41 @@ class Runner {
                 } else {
                     R = 0; G = 0; B = 0;
                 }
+
+                // Transition handling (diagonal wipe BL->TR)
+                const key = r + ',' + c;
+                const canAnimate = this.animationsEnabled && this.cellSize >= this.minAnimatedCellSize && this.epochDuration >= this.minAnimatedEpochMs;
+                const trans = canAnimate ? this.transitions.get(key) : undefined;
+                let inTransition = false, transType = null, prog = 0;
+                if (trans) {
+                    const elapsed = nowTs - trans.start;
+                    if (elapsed < this.animationDuration && trans.type === 'birth') {
+                        inTransition = true;
+                        transType = 'birth';
+                        prog = Math.max(0, Math.min(1, elapsed / this.animationDuration));
+                    } else {
+                        // will be cleaned up by RAF loop
+                    }
+                }
+
                 const xStart = c * this.cellSize;
+                const maxD = (this.cellSize - 1) * 2;
+                const threshold = Math.floor(prog * maxD);
+
+                // Source/target colors for transition
+                // Only animate births: source is heat color (if heatmap on) or black; target is white
+                let srcR = 0, srcG = 0, srcB = 0;
+                let tgtR = 255, tgtG = 255, tgtB = 255;
+                if (inTransition && transType === 'birth') {
+                    if (this.heatMap && dr[c] > 0) {
+                        const [hr, hg, hb] = this.getHeatColor(dr[c]);
+                        srcR = hr; srcG = hg; srcB = hb;
+                    } else {
+                        srcR = 0; srcG = 0; srcB = 0;
+                    }
+                    tgtR = 255; tgtG = 255; tgtB = 255;
+                }
+
                 // Paint the block (cellSize x cellSize)
                 for (let py = 0; py < this.cellSize; py++) {
                     const y = yStart + py;
@@ -130,6 +174,21 @@ class Runner {
                             data[idx + 1] = 0;
                             data[idx + 2] = 0;
                             data[idx + 3] = 255;
+                        } else if (inTransition) {
+                            // Diagonal index: bottom-left (px=0, py=cellSize-1) -> 0, top-right -> maxD
+                            const d = px + (this.cellSize - 1 - py);
+                            const useTarget = d <= threshold;
+                            if (useTarget) {
+                                data[idx] = tgtR;
+                                data[idx + 1] = tgtG;
+                                data[idx + 2] = tgtB;
+                                data[idx + 3] = 255;
+                            } else {
+                                data[idx] = srcR;
+                                data[idx + 1] = srcG;
+                                data[idx + 2] = srcB;
+                                data[idx + 3] = 255;
+                            }
                         } else {
                             data[idx] = R;
                             data[idx + 1] = G;
@@ -226,6 +285,20 @@ class Runner {
                 this.drawGrid();
             });
         }
+        if (this.animateToggle) {
+            this.animateToggle.addEventListener('change', () => {
+                this.animationsEnabled = this.animateToggle.checked;
+                if (!this.animationsEnabled) {
+                    // stop RAF and clear transitions
+                    if (this.animationRafId != null) {
+                        cancelAnimationFrame(this.animationRafId);
+                        this.animationRafId = null;
+                    }
+                    this.transitions.clear();
+                }
+                this.drawGrid();
+            });
+        }
         if (this.toroidalToggle) {
             this.toroidalToggle.addEventListener('change', () => {
                 this.toroidal = this.toroidalToggle.checked;
@@ -249,6 +322,7 @@ class Runner {
             const idx = parseInt(this.epochInput.value);
             this.epochDuration = this.epochSliderSteps[idx];
             this.epochValue.textContent = this.epochSliderLabels[idx];
+            this.adjustAnimationDuration();
             if (this.isRunning && !this.isPaused) {
                 clearInterval(this.intervalId);
                 this.intervalId = setInterval(() => this.gameLoop(), this.epochDuration);
@@ -264,20 +338,16 @@ class Runner {
             this.previewCellFromEvent(e);
             this.drawGrid();
         });
-        this.canvas.addEventListener('mouseup', (e) => {
+        // Replace canvas mouseup with global mouseup so drawing finalizes even outside the canvas
+        window.addEventListener('mouseup', (e) => {
+            if (!this.isMouseDown) return;
             this.isMouseDown = false;
-            const mouseUpCell = this.getCellFromEvent(e);
-            // If only one cell was painted, toggle it
-            if (
-                this.mouseDownCell && mouseUpCell &&
-                this.mouseDownCell.row === mouseUpCell.row &&
-                this.mouseDownCell.col === mouseUpCell.col &&
-                this.previewCells.size === 1
-            ) {
-                const key = this.mouseDownCell.row + ',' + this.mouseDownCell.col;
-                this.grid[this.mouseDownCell.row][this.mouseDownCell.col] = this.grid[this.mouseDownCell.row][this.mouseDownCell.col] ? 0 : 1;
+            // Toggle single cell if it was a simple click on one cell, even if mouseup is off-canvas
+            const isSingleCell = this.previewCells.size === 1 && this.mouseDownCell && this.previewCells.has(this.mouseDownCell.row + ',' + this.mouseDownCell.col);
+            if (isSingleCell) {
+                const { row, col } = this.mouseDownCell;
+                this.grid[row][col] = this.grid[row][col] ? 0 : 1;
             } else {
-                // Otherwise, apply all preview cells as alive
                 this.applyPreviewCells();
             }
             this.previewCells.clear();
@@ -287,11 +357,8 @@ class Runner {
             this.drawGrid();
         });
         this.canvas.addEventListener('mouseleave', () => {
-            this.isMouseDown = false;
-            this.previewCells.clear();
-            this.paintedCells.clear();
-            this.lastPaintedCell = null;
-            this.drawGrid();
+            // Do not clear preview when leaving the canvas; keep drawing state so it persists
+            // Finalization will occur on global mouseup
         });
         this.canvas.addEventListener('mousemove', (e) => {
             if (!this.isMouseDown) return;
@@ -343,8 +410,6 @@ class Runner {
     zoom(direction) {
         // Zoom in or out by changing cell size while keeping viewport centered
         const oldCellSize = this.cellSize;
-        const prevWidth = this.canvas.width;
-        const prevHeight = this.canvas.height;
         const prevScrollLeft = this.frame.scrollLeft;
         const prevScrollTop = this.frame.scrollTop;
         const frameWidth = this.frame.clientWidth;
@@ -449,6 +514,7 @@ class Runner {
             this.nextGrid = Array.from({ length: rows }, () => new Uint8Array(cols));
         }
         let changed = false;
+        const nowTs = window.performance ? performance.now() : Date.now();
         for (let r = 0; r < rows; r++) {
             const nextRow = this.nextGrid[r];
             const currRow = this.grid[r];
@@ -467,7 +533,17 @@ class Runner {
                     next = (aliveNeighbors === 3) ? 1 : 0;
                 }
                 nextRow[c] = next;
-                if (next !== curr) changed = true;
+                if (next !== curr) {
+                    changed = true;
+                    // Only animate births; do not animate deaths
+                    if (next === 1) {
+                        const key = r + ',' + c;
+                        this.transitions.set(key, { type: 'birth', start: nowTs });
+                    } else {
+                        // ensure no lingering transition for this cell
+                        this.transitions.delete(r + ',' + c);
+                    }
+                }
             }
         }
         return changed;
@@ -576,6 +652,16 @@ class Runner {
             this.grid = this.nextGrid;
             this.nextGrid = tmp;
             this.drawGrid();
+            // Start animations if any
+            if (this.transitions.size > 0) {
+                const canAnimate = this.animationsEnabled && this.cellSize >= this.minAnimatedCellSize && this.epochDuration >= this.minAnimatedEpochMs;
+                if (canAnimate) {
+                    this.ensureAnimationRunning();
+                } else {
+                    // Too small or too fast or disabled; clear transitions
+                    this.transitions.clear();
+                }
+            }
         } else {
             clearInterval(this.intervalId);
             this.isRunning = false;
@@ -673,6 +759,46 @@ class Runner {
         this.fitGridToContainer(); // Recreate grid to fit container
         this.drawGrid();
         this.updateButtonStates();
+    }
+
+    ensureAnimationRunning() {
+        if (this.animationRafId != null) return;
+        const step = (timestamp) => this.animateFrame(timestamp);
+        this.animationRafId = requestAnimationFrame(step);
+    }
+
+    adjustAnimationDuration() {
+        // Make animation proportional to epoch duration, with bounds
+        // Use about 70% of the epoch for the wipe, capped to [120ms, 600ms]
+        const base = Math.round(this.epochDuration * 0.4);
+        this.animationDuration = Math.max(120, Math.min(600, base));
+        // If epoch is too fast, disable any active transitions
+        if (this.epochDuration < this.minAnimatedEpochMs || !this.animationsEnabled) {
+            if (this.animationRafId != null) {
+                cancelAnimationFrame(this.animationRafId);
+                this.animationRafId = null;
+            }
+            this.transitions.clear();
+        }
+    }
+
+    animateFrame(timestamp) {
+        // Draw with current timestamp for smooth progress
+        this.drawGrid(timestamp);
+        // Prune finished transitions
+        let anyActive = false;
+        for (const [key, tr] of this.transitions) {
+            if (timestamp - tr.start >= this.animationDuration) {
+                this.transitions.delete(key);
+            } else {
+                anyActive = true;
+            }
+        }
+        if (anyActive) {
+            this.animationRafId = requestAnimationFrame((t) => this.animateFrame(t));
+        } else {
+            this.animationRafId = null;
+        }
     }
 }
 
