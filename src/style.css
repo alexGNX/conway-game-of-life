@@ -15,17 +15,23 @@ body {
 }
 
 #controls {
-    position: sticky;
-    top: 0;
-    background: #f0f0f0ee;
-    z-index: 1000;
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fefefecc;
+    /* slightly translucent over canvas */
+    backdrop-filter: blur(2px);
+    z-index: 2000;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
-    margin: 8px 0 16px 0;
-    padding: 8px 16px 12px 16px;
+    margin: 0;
+    padding: 8px 8px 8px 8px;
     box-sizing: border-box;
+    border-radius: 12px;
+    /* match control bar */
 }
 
 #controls>div {
@@ -52,9 +58,9 @@ body {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     flex-wrap: nowrap;
     white-space: nowrap;
-}
+    gap: 0;
 
-#heatmap-toggle-label {
+    padding: 10px 16px;
     user-select: none;
 }
 
@@ -123,6 +129,8 @@ canvas {
     justify-content: center;
     align-self: center;
     width: auto;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .cell.alive {
@@ -191,7 +199,8 @@ button:disabled {
 #grid-container {
     display: flex;
     justify-content: center;
-    margin-top: 12px;
+    margin-top: 0;
+    /* canvas can occupy full viewport; controls overlay above */
 }
 
 /* Options dropdown */
@@ -243,17 +252,17 @@ button:disabled {
 
 
 #grid-frame {
-    width: 96vw;
-    height: calc(100vh - 150px);
-    /* more vertical space for the grid */
-    max-width: 1900px;
+    width: 100vw;
+    height: 100vh;
+    /* fill viewport; controls overlay floats above */
+    max-width: none;
     max-height: none;
     min-width: 320px;
     min-height: 240px;
     overflow: auto;
     box-sizing: border-box;
     background: #000000;
-    margin: 0 auto 40px auto;
+    margin: 0;
 }
 
 #canvas-wrapper {
