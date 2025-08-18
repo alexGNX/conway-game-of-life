@@ -3,6 +3,13 @@ body {
     background-color: #f0f0f0;
     margin: 0;
     padding: 0;
+    height: 100%;
+    overflow: hidden;
+    /* prevent page scroll; grid frame will handle scroll */
+}
+
+html {
+    height: 100%;
 }
 
 #title {
@@ -34,14 +41,7 @@ body {
     /* match control bar */
 }
 
-#controls>div {
-    display: flex;
-    gap: 16px 20px;
-    align-items: center;
-    flex-wrap: wrap;
-    /* allow wrapping on narrow screens */
-    justify-content: center;
-}
+/* (removed erroneous early #grid-frame block) */
 
 #controls>div:nth-child(2) {
     margin-top: 10px;
@@ -70,12 +70,17 @@ body {
     gap: 8px;
 }
 
+/* Slider toggle control (size + positioning) */
 .toggle {
     position: relative;
     display: inline-block;
     width: 30px;
     height: 17px;
+    flex: 0 0 auto;
+    /* do not stretch in flex rows */
 }
+
+/* (removed erroneous duplicate #grid-frame sizing block) */
 
 .toggle input {
     display: none;
@@ -201,6 +206,8 @@ button:disabled {
     justify-content: center;
     margin-top: 0;
     /* canvas can occupy full viewport; controls overlay above */
+    width: 100%;
+    height: 100%;
 }
 
 /* Options dropdown */
@@ -252,8 +259,8 @@ button:disabled {
 
 
 #grid-frame {
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     /* fill viewport; controls overlay floats above */
     max-width: none;
     max-height: none;
@@ -309,8 +316,8 @@ button:disabled {
     }
 
     #grid-frame {
-        width: 96vw;
-        height: 82vh;
+        width: 100%;
+        height: 100%;
     }
 }
 
@@ -344,7 +351,7 @@ button:disabled {
     }
 
     #grid-frame {
-        width: 98vw;
-        height: 80vh;
+        width: 100%;
+        height: 100%;
     }
 }
