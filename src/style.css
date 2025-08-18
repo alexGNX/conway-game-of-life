@@ -6,7 +6,8 @@ body {
 }
 
 #title {
-    position: static; /* was fixed; allow normal flow to prevent overlap */
+    position: static;
+    /* was fixed; allow normal flow to prevent overlap */
     margin: 16px 24px 0 24px;
     font-size: 1.6em;
     text-align: left;
@@ -27,21 +28,83 @@ body {
     box-sizing: border-box;
 }
 
-#controls > div {
+#controls>div {
     display: flex;
     gap: 16px 20px;
     align-items: center;
-    flex-wrap: wrap; /* allow wrapping on narrow screens */
+    flex-wrap: wrap;
+    /* allow wrapping on narrow screens */
     justify-content: center;
 }
 
-#controls > div:nth-child(2) {
+#controls>div:nth-child(2) {
     margin-top: 10px;
 }
 
+.control-bar {
+    background: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 12px;
+    padding: 6px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
 #heatmap-toggle-label {
-    margin-left: 20px;
     user-select: none;
+}
+
+.toggle-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toggle {
+    position: relative;
+    display: inline-block;
+    width: 30px;
+    height: 17px;
+}
+
+.toggle input {
+    display: none;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #333;
+    transition: 0.4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 13px;
+    width: 13px;
+    left: 2px;
+    bottom: 2px;
+    background-color: #FFF;
+    transition: 0.1s;
+    border-radius: 50%;
+}
+
+input:checked+.slider {
+    background-color: rgb(7, 91, 143);
+}
+
+input:checked+.slider:before {
+    transform: translateX(13px);
 }
 
 input[type="range"] {
@@ -55,12 +118,11 @@ canvas {
     display: block;
 }
 
-.cell {
-    width: 20px;
-    height: 20px;
-    background-color: #fff;
-    border: 1px solid #ccc;
-    cursor: pointer;
+#controls>.control-bar {
+    display: inline-flex;
+    justify-content: center;
+    align-self: center;
+    width: auto;
 }
 
 .cell.alive {
@@ -88,6 +150,42 @@ button:disabled {
     opacity: 0.7;
 }
 
+/* Icon buttons */
+.icon-btn {
+    padding: 8px;
+    width: 45px;
+    height: 45px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent !important;
+    /* transparent background */
+    border-radius: 5px;
+    color: inherit;
+}
+
+.icon-btn img {
+    width: 45px;
+    height: 45px;
+    display: block;
+}
+
+.icon-btn:hover {
+    background-color: transparent !important;
+}
+
+.icon-btn:disabled {
+    background-color: transparent !important;
+    color: inherit !important;
+    opacity: 1 !important;
+    /* do not dim entire button */
+    cursor: not-allowed !important;
+}
+
+.icon-btn:disabled img {
+    filter: grayscale(100%);
+    opacity: 0.5;
+}
 
 /* Grid container */
 #grid-container {
@@ -96,9 +194,58 @@ button:disabled {
     margin-top: 12px;
 }
 
+/* Options dropdown */
+.options-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.options-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    min-width: 260px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    padding: 10px 12px;
+    display: none;
+    z-index: 2000;
+}
+
+.options-dropdown:hover .options-menu,
+.options-dropdown:focus-within .options-menu,
+.options-dropdown.open .options-menu {
+    display: block;
+}
+
+.options-section {
+    padding: 6px 0;
+    border-top: 1px solid #eee;
+}
+
+.options-section:first-child {
+    border-top: none;
+}
+
+.options-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 2px;
+}
+
+.options-row select {
+    min-width: 120px;
+}
+
+
 #grid-frame {
     width: 96vw;
-    height: calc(100vh - 150px); /* more vertical space for the grid */
+    height: calc(100vh - 150px);
+    /* more vertical space for the grid */
     max-width: 1900px;
     max-height: none;
     min-width: 320px;
@@ -120,7 +267,8 @@ button:disabled {
 #gameCanvas {
     display: block;
     background: transparent;
-    margin: 0; /* remove auto-centering */
+    margin: 0;
+    /* remove auto-centering */
 }
 
 #epoch-value {
@@ -135,18 +283,22 @@ button:disabled {
         text-align: center;
         margin: 12px 16px 0 16px;
     }
+
     #controls {
         align-items: stretch;
         padding: 8px 12px 12px 12px;
     }
-    #controls > div {
+
+    #controls>div {
         justify-content: center;
         gap: 12px 16px;
     }
+
     input[type="range"] {
         width: 100%;
         max-width: 360px;
     }
+
     #grid-frame {
         width: 96vw;
         height: 82vh;
@@ -154,25 +306,31 @@ button:disabled {
 }
 
 @media (max-width: 600px) {
-    body { font-size: 14px; }
+    body {
+        font-size: 14px;
+    }
+
     #title {
         font-size: 1.35em;
         text-align: center;
         margin: 10px 12px 0 12px;
     }
-    #controls > div:nth-child(2) {
+
+    #controls>div:nth-child(2) {
         flex-direction: column;
         align-items: stretch;
     }
-    button {
+
+    /* Only widen regular buttons on very small screens */
+    button:not(.icon-btn) {
         width: 100%;
         max-width: 360px;
     }
+
     /* Remove left margins on toggle labels when stacked */
     #heatmap-toggle-label,
     #animate-toggle-label,
-    #toroidal-toggle-label,
-    #infinite-toggle-label {
+    #grid-mode-label {
         margin-left: 0;
     }
 

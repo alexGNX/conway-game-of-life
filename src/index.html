@@ -1,45 +1,71 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Conway's Game of Life</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div id="controls">
-        <div>
-            <label for="epoch">Epoch duration: <span id="epoch-value">600</span></label>
-            <input type="range" id="epoch" min="0" max="9" value="5">
-        </div>
-        <div>
-            <button id="playpause-button" disabled>Pause</button>
-            <button id="reset-button">Reset</button>
-            <label id="heatmap-toggle-label">
-                <input type="checkbox" id="heatmap-toggle" checked>
-                Heatmap
-            </label>
-            <label id="animate-toggle-label" style="margin-left: 20px; user-select: none;">
-                <input type="checkbox" id="animate-toggle" checked>
-                Animate cells
-            </label>
-            <label id="toroidal-toggle-label" style="margin-left: 20px; user-select: none;">
-                <input type="checkbox" id="toroidal-toggle">
-                Toroidal Grid
-            </label>
-            <label id="infinite-toggle-label" style="margin-left: 20px; user-select: none;">
-                <input type="checkbox" id="infinite-toggle">
-                Infinite Grid
-            </label>
+        <div class="control-bar">
+            <button id="playpause-button" class="icon-btn" aria-label="Play/Pause" title="Play" disabled>
+                <img id="playpause-icon" src="assets/play-button.svg" alt="Play" />
+            </button>
+            <button id="reset-button" class="icon-btn" aria-label="Reset" title="Reset">
+                <img id="reset-icon" src="assets/reset-button.svg" alt="Reset" />
+            </button>
+            <div class="options-dropdown" aria-haspopup="true">
+                <button id="options-button" class="icon-btn" aria-label="Options" title="Options">
+                    <img id="options-icon" src="assets/options-button.svg" alt="Options" />
+                </button>
+                <div class="options-menu" role="menu" aria-label="Options menu">
+                    <div class="options-section">
+                        <label for="epoch" class="options-row">
+                            <span>Epoch</span>
+                            <select id="epoch" aria-label="Epoch"></select>
+                        </label>
+                    </div>
+                    <div class="options-section">
+                        <label id="grid-mode-label" class="options-row">
+                            <span>Grid Mode</span>
+                            <select id="grid-mode" aria-label="Grid Mode">
+                                <option value="fixed" selected>fixed</option>
+                                <option value="toroidal">toroidal</option>
+                                <option value="infinite">infinite</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="options-section">
+                        <div id="heatmap-toggle-label" class="options-row">
+                            <span>Heatmap</span>
+                            <label class="toggle" title="Toggle heatmap">
+                                <input type="checkbox" id="heatmap-toggle" checked />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div id="animate-toggle-label" class="options-row">
+                            <span>Animate cells</span>
+                            <label class="toggle" title="Toggle cell animations">
+                                <input type="checkbox" id="animate-toggle" checked />
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     <div id="grid-container">
         <div id="grid-frame">
             <div id="canvas-wrapper">
-                <canvas id="gameCanvas" width="1000" height="1000"></canvas>
+                <canvas id="gameCanvas" width="1000" height="1200"></canvas>
             </div>
         </div>
     </div>
     <script src="main.js"></script>
 </body>
+
 </html>

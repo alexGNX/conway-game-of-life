@@ -11,8 +11,9 @@ class Runner {
         this.epochValue = document.getElementById('epoch-value');
         this.heatMapToggle = document.getElementById('heatmap-toggle');
         this.animateToggle = document.getElementById('animate-toggle');
-        this.toroidalToggle = document.getElementById('toroidal-toggle');
-        this.infiniteToggle = document.getElementById('infinite-toggle');
+        this.gridModeSelect = document.getElementById('grid-mode');
+        this.optionsDropdown = document.querySelector('.options-dropdown');
+        this.optionsButton = document.getElementById('options-button');
         // Simulation parameters
         this.epochSliderSteps = [25, 50, 100, 150, 250, 300, 600, 1000, 1500, 2000];
         this.epochSliderLabels = [
@@ -32,9 +33,11 @@ class Runner {
         this.previewCells = new Set();
         this.heatMap = this.heatMapToggle ? this.heatMapToggle.checked : true;
         this.animationsEnabled = this.animateToggle ? this.animateToggle.checked : true;
-        this.toroidal = this.toroidalToggle ? this.toroidalToggle.checked : true;
-        this.infinite = this.infiniteToggle ? this.infiniteToggle.checked : false;
-        this.epochDuration = this.epochSliderSteps[this.epochInput.value];
+        const initialGridMode = this.gridModeSelect ? this.gridModeSelect.value : 'fixed';
+        this.toroidal = initialGridMode === 'toroidal';
+        this.infinite = initialGridMode === 'infinite';
+        // Initialize epoch from control's current value/index
+        this.epochDuration = this.epochSliderSteps[parseInt(this.epochInput.value || 100)];
         this.lastPaintedCell = null;
         this.mouseDownCell = null;
         this.minCellSize = 2;
@@ -59,26 +62,47 @@ class Runner {
     }
 
     initEpochSlider() {
-        // Set up the epoch duration slider
-        if (this.epochInput && this.epochInput.type === 'range') {
+        // Set up the epoch control (supports select or range)
+        if (!this.epochInput) return;
+        if (this.epochInput.tagName && this.epochInput.tagName.toLowerCase() === 'select') {
+            // Populate options
+            this.epochInput.innerHTML = '';
+            this.epochSliderSteps.forEach((ms, idx) => {
+                const opt = document.createElement('option');
+                opt.value = String(idx);
+                opt.textContent = this.epochSliderLabels[idx];
+                this.epochInput.appendChild(opt);
+            });
+            // Default selection
+            if (this.epochInput.selectedIndex === -1) {
+                this.epochInput.selectedIndex = 5; // 300ms as in original value
+            }
+            if (this.epochValue) this.epochValue.textContent = this.epochSliderLabels[this.epochInput.value];
+        } else if (this.epochInput.type === 'range') {
             this.epochInput.min = 0;
             this.epochInput.max = this.epochSliderSteps.length - 1;
             this.epochInput.step = 1;
             if (!this.epochInput.value) this.epochInput.value = 0; // Default to 0.1s
-            this.epochValue.textContent = this.epochSliderLabels[this.epochInput.value];
+            if (this.epochValue) this.epochValue.textContent = this.epochSliderLabels[this.epochInput.value];
         }
     }
 
     updateButtonStates() {
         // Update play/pause/reset button states based on simulation state
         if (!this.isRunning) {
-            this.playPauseButton.textContent = 'Start';
+            const icon = document.getElementById('playpause-icon');
+            if (icon) icon.src = 'assets/play-button.svg';
+            this.playPauseButton.title = 'Start';
             this.playPauseButton.disabled = this.isGridBlank();
         } else if (this.isPaused) {
-            this.playPauseButton.textContent = 'Resume';
+            const icon = document.getElementById('playpause-icon');
+            if (icon) icon.src = 'assets/play-button.svg';
+            this.playPauseButton.title = 'Resume';
             this.playPauseButton.disabled = false;
         } else {
-            this.playPauseButton.textContent = 'Pause';
+            const icon = document.getElementById('playpause-icon');
+            if (icon) icon.src = 'assets/pause-button.svg';
+            this.playPauseButton.title = 'Pause';
             this.playPauseButton.disabled = false;
         }
         this.resetButton.disabled = !this.isRunning && this.isGridBlank();
@@ -342,35 +366,51 @@ class Runner {
                 this.drawGrid();
             });
         }
-        if (this.toroidalToggle) {
-            this.toroidalToggle.addEventListener('change', () => {
-                this.toroidal = this.toroidalToggle.checked;
-                if (this.toroidal) {
-                    this.infinite = false;
-                    if (this.infiniteToggle) this.infiniteToggle.checked = false;
+        // Options menu open/close behavior for click/touch devices
+        if (this.optionsButton && this.optionsDropdown) {
+            this.optionsButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const isOpen = this.optionsDropdown.classList.contains('open');
+                if (isOpen) {
+                    this.optionsDropdown.classList.remove('open');
+                } else {
+                    this.optionsDropdown.classList.add('open');
                 }
+            });
+            // Close menu when clicking outside
+            window.addEventListener('click', (e) => {
+                if (!this.optionsDropdown.contains(e.target)) {
+                    this.optionsDropdown.classList.remove('open');
+                }
+            });
+            // Close on Escape
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    this.optionsDropdown.classList.remove('open');
+                }
+            });
+        }
+        if (this.gridModeSelect) {
+            this.gridModeSelect.addEventListener('change', () => {
+                const mode = this.gridModeSelect.value;
+                this.toroidal = mode === 'toroidal';
+                this.infinite = mode === 'infinite';
                 this.drawGrid();
             });
         }
-        if (this.infiniteToggle) {
-            this.infiniteToggle.addEventListener('change', () => {
-                this.infinite = this.infiniteToggle.checked;
-                if (this.infinite) {
-                    this.toroidal = false;
-                    if (this.toroidalToggle) this.toroidalToggle.checked = false;
-                }
-            });
-        }
-        this.epochInput.addEventListener('input', () => {
+        const onEpochChange = () => {
             const idx = parseInt(this.epochInput.value);
             this.epochDuration = this.epochSliderSteps[idx];
-            this.epochValue.textContent = this.epochSliderLabels[idx];
+            if (this.epochValue) this.epochValue.textContent = this.epochSliderLabels[idx];
             this.adjustAnimationDuration();
             if (this.isRunning && !this.isPaused) {
                 clearInterval(this.intervalId);
                 this.intervalId = setInterval(() => this.gameLoop(), this.epochDuration);
             }
-        });
+        };
+        this.epochInput.addEventListener('input', onEpochChange);
+        this.epochInput.addEventListener('change', onEpochChange);
         // Mouse events for painting cells
         this.canvas.addEventListener('mousedown', (e) => {
             this.isMouseDown = true;
